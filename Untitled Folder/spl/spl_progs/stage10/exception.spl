@@ -1,0 +1,192 @@
+print("in exhandler");
+alias Cause S0 ;
+alias VPagenum S1 ;
+alias Ip_addr S2 ;
+ 
+Cause = EFR % 10;		// Gets value of cause field (size 1 char)
+VPagenum = (EFR / 10) % 100;    // Gets value of BadVAddr 
+Ip_addr = (EFR/1000);		//Gets value of IP at the point of exception
+
+SP = SP + 1;
+ 
+//page fault
+if(Cause == 0)then 
+	alias pid S3 ;
+	pid  = (PTBR -1024 )/8 ;
+
+	//if the page number is not defined in page_table
+	if ( [PAGE_TABLE + pid*8+ 2 * VPagenum] == -1) then
+
+		alias physicalSP S0; //this is physical sp of parent process 
+		alias sysCallNo S1;
+		 
+		//getting the address of physical user SP
+		physicalSP = ([PTBR + 2 * (SP / 512)] * 512) + (SP % 512);
+
+		//since the user has push the sysCall no  onto stack
+		[physicalSP-1] = 10  ;
+
+		//jumping to exit block 23*512
+		inline "JMP 11776" ;
+	endif ;
+
+	alias free_page S4  ;
+	free_page = 0 ;
+	//allocating the page if found in the mem - list	
+	while(free_page < 64) do 
+		if([MEM_LIST + free_page] == 0) then //free page in mempory
+			break ;
+		endif ;
+		free_page = free_page + 1 ;
+	endwhile ;
+	alias counter S5 ; 
+	alias fault_pg S7 ;
+	counter = free_page ;
+
+
+	//if no free page then replacement policy 
+	if( free_page == 64 ) then
+		 
+		alias flag S6 ;
+
+		flag = 0 ;
+
+		while(flag < 2)do 
+			counter =  PAGE_TABLE +  8  ;
+
+			while(counter != PAGE_TABLE + 6 ) do 
+				if(counter == 1276) then
+					counter = 1024 ;
+				endif ;
+				if( (counter +2 ) % 8 == 0 )then // leaving for stack 
+					counter = counter + 2  ;
+					continue ;
+				endif ;
+
+				if([ counter  +1 ] =="01" ) then //checking the referenced bit
+					
+					//ensuring that page shared b/w more than one process is not been shared 
+					if([MEM_LIST + [  counter ] ] <= 1 )then
+						break ;
+					endif ;
+
+					counter = counter +2 ;
+					continue ;
+				endif ;
+
+				//checking that page table contain swap page or not
+				// [counter ] >64 && [ counter  +1 ] =="01" is the condition for swap space
+				if([ counter  +1 ] =="00")then
+					counter =counter +2 ;
+					continue ;
+				endif ;
+
+				
+
+				if([  counter  +1 ] == "11")then 
+					[  counter  +1 ] = "01" ;
+				endif ;
+				 
+				counter = counter + 2  ; 
+ 
+			endwhile ;
+
+			if(counter !=PAGE_TABLE + 6 ) then 
+				break ;
+			endif ;
+
+			flag = flag +1 ;
+
+	endwhile ;
+
+		free_page = [counter] ;
+		//print(free_page) ;
+		breakpoint ;
+		//swapping the found page in swap area 
+		alias counterdisk S7  ;
+		counterdisk = 448 ;
+
+		while( counterdisk < 512) do 
+			if([DISK_LIST + counterdisk] ==0 ) then
+				break ;
+			endif ;
+			counterdisk = counterdisk +1 ;
+		endwhile ;
+ 
+		//no free space for swapping is found
+		if( counterdisk ==512 )then
+			alias physicalSP S0; //this is physical sp of parent process 
+			alias sysCallNo S1;
+			 
+			//getting the address of physical user SP
+			physicalSP = ([PTBR +  (SP / 512)] * 512) + (SP % 512);
+
+			//since the user has push the sysCall no  onto stack
+			 
+			[physicalSP-1] = 10  ;
+
+			//jumping to exit block 23*512
+			inline "JMP 11776" ;
+
+		endif ;
+		 
+
+		store(free_page , counterdisk );
+
+		[ counter + 1 ] = "00" ;
+		[ counter ] =  counterdisk ;
+
+		[DISK_LIST + counterdisk ] =[DISK_LIST + counterdisk ] + 1 ;
+
+		//free memory pg number 
+		counter = free_page ;
+		 
+
+	endif ; 
+
+ 	
+	fault_pg = [PAGE_TABLE + 8*pid + 2*VPagenum] ;
+
+	load(free_page , fault_pg ) ;
+
+	 
+
+	if(fault_pg >447)then 
+		[DISK_LIST + fault_pg ] = [DISK_LIST + fault_pg ] - 1 ;
+	endif ;
+	
+	 
+	[PAGE_TABLE + pid *8 +2*VPagenum ] = free_page ;
+	[PAGE_TABLE + pid *8 +2*VPagenum +1]  = "11" ;
+	store(6,20) ;
+
+	 
+	
+	[MEM_LIST +free_page ] = 1 ;
+
+	SP = SP +1 ;
+	[[PTBR + 2 * (SP / 512)] * 512+ (SP % 512)] = Ip_addr ;
+ 
+ 	  
+	ireturn ;
+
+
+endif ; 
+
+
+
+print("not page faultt ") ;
+breakpoint ;
+//other than page fault 
+
+alias physicalSP S0; //this the physical sp of parent process 
+alias sysCallNo S1;
+ 
+//getting the address of physical user SP
+physicalSP = ([PTBR + 2 * (SP / 512)] * 512) + (SP % 512);
+
+//since the user has push the sysCall no  onto stack
+
+[physicalSP-1] = 10  ;
+//jumping to exit block 23*512
+inline "JMP 11776" ;

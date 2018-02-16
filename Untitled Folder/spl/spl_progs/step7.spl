@@ -1,0 +1,130 @@
+print("I am in int1") ;
+
+alias physicalSP S0;
+alias sysCallNo S1;
+
+
+//getting the address of physical user SP
+physicalSP = ([PTBR + 2 * (SP / 512)] * 512) + (SP % 512);
+
+//since the user has push the syscall no  onto stack
+sysCallNo = [physicalSP-1];
+
+
+
+alias fileName S2;
+fileName = [physicalSP-3];
+
+
+if(sysCallNo == 1) then 
+	alias loop_fat S3;
+	loop_fat = 0;
+
+	// if fat contains already the file name 
+	while(loop_fat < 64) do
+		if([FAT + loop_fat * 8] == fileName) then
+		        
+		        print("fat already contain this file ") ;
+			[physicalSP-2] = 0;  //setting the return as success
+			ireturn;
+		endif;
+		loop_fat = loop_fat + 1;
+	endwhile;
+	
+
+	alias loop_disklist S3;
+	loop_disklist = 24; //since below 24 is reserved for system
+
+	//checking whether any diskblock is free
+	while(loop_disklist <= 447) do 
+		if( [DISK_LIST + loop_disklist] == 0) then
+		        print("disk free is ") ; 
+		        print(loop_disklist) ;
+			break;
+		endif;
+		loop_disklist= loop_disklist + 1;
+	endwhile;
+
+	//no free disk block
+	if(loop_disklist == 448) then
+	          print(" no disk free is ") ;
+		[physicalSP-2] = -1;
+		ireturn;
+	endif;
+	
+
+	alias loop_fat1 S4;
+	loop_fat1 = 0;
+	while(loop_fat1 < 64) do
+                print(loop_fat1) ;
+                
+		if([FAT + loop_fat1 * 8 ] == -1) then
+ 
+			[FAT + loop_fat1 * 8 ] = fileName;
+			[FAT + loop_fat1 * 8 + 1] = 0;
+			[FAT + loop_fat1 * 8 + 2] = loop_disklist;
+			break;
+		endif;
+		loop_fat1 = loop_fat1+1;
+	endwhile;
+	
+	print("fat loading successed ") ;
+        print(loop_fat1) ;
+	if(loop_fat1 == 64) then
+	        print("no free fat ") ;
+		[physicalSP-2] = -1;
+		ireturn;
+	endif;
+	
+	//load the block of the disk which is free
+	load (1, loop_disklist);
+	
+	alias reset_loop S5;
+	reset_loop = 0;
+	//setting all the words in basic block to none
+	while(reset_loop <  256) do 
+		[SCRATCHPAD + reset_loop] = -1;
+		reset_loop = reset_loop + 1;
+	endwhile;
+//-------------------------------------------------------------------
+	//creating basic block 
+	reset_loop= 0 ;
+	while(reset_loop <448)do
+		if([DISK_LIST +reset_loop]==0)then
+			break ;
+		endif ;
+		
+		reset_loop = reset_loop+1 ;
+	endwhile ;
+
+
+
+	[SCRATCHPAD  ]= reset_loop ; //indicating data is present at block
+
+//-------------------------------------------------------------------
+
+
+	
+	//marking the this block as non-empty
+	[DISK_LIST + loop_disklist] = 1;
+	
+	//storing the basic block again to the disk
+	store(1, loop_disklist);
+
+	//storing FAT
+	store (5, 19);
+
+	//storing Disk Free List
+	store (6, 20);
+
+	[physicalSP-2] = 0;
+        
+        
+	ireturn;
+
+endif;
+
+print("this is not file_create call") ;
+
+
+

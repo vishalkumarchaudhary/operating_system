@@ -1,0 +1,265 @@
+print("inside int5") ;
+
+alias physicalSP S0; //this the physical sp of parent process 
+alias sysCallNo S1;
+ 
+
+//getting the address of physical user SP
+physicalSP = ([PTBR + 2 * (SP / 512)] * 512) + (SP % 512);
+
+//since the user has push the sysCall no  onto stack
+sysCallNo = [physicalSP-1];
+
+//fork operation  with system call 8
+if(sysCallNo == 8)then 
+	alias child_pid S3 ;
+	alias parentpid S4 ;
+	parentpid =  (PTBR - 1024 )/8 ;
+	 
+	child_pid =  0 ;
+	 
+	 	
+	//checking the free pcb
+	while(child_pid !=32 )do 
+
+		if([ READY_LIST + child_pid *32 +1] == 0 ) then
+			 
+			break ;
+		endif ;
+		child_pid = child_pid +1 ;
+ 
+	endwhile ;
+
+	//no free pcb 
+	if(child_pid == 32 )then
+		[physicalSP-2] = -1 ; 
+		ireturn ;
+	endif ;
+	
+	 
+	//setting the pid of the child process 
+	[READY_LIST + child_pid *32 ] = child_pid ;
+
+	alias counter S10 ;
+	counter = 0 ; 
+  
+	alias free_pg_count S11 ;
+	free_pg_count = 0 ;
+
+	//searching for free page for the stack 
+	counter = 22 ;
+	while(counter < 64 )do 
+		if([MEM_LIST+counter]==0)then 
+			free_pg_count = counter ;
+		   	break ;
+		endif ;
+		counter = counter +1 ; 
+	endwhile ;
+ 	
+    
+	 
+	//if no. of  free pages required is not available in the memory 
+	if(counter == 64  )then 
+
+		alias flag S6 ;
+
+		flag = 0 ;
+
+		while(flag < 2)do 
+
+			counter =  PAGE_TABLE + 8 ;
+			if(parentpid ==20 )then
+				print("before") ;
+endif ;
+			while( counter != PAGE_TABLE + 6  ) do 
+				if(counter == 1278) then
+					counter = 1024 ;
+				endif ;
+
+				if( (counter + 2 ) % 8 == 0 )then // leaving for stack 
+					counter = counter + 2  ;	
+					 continue;
+				endif ;
+
+				//checking that page table contain swap page or not
+				// [counter ] >64 && [ counter  +1 ] =="01" is the condition for swap space
+				if([ counter  +1 ] == "00" )then
+					counter =counter +2 ;
+					continue ;
+				 
+				endif ;
+
+				if([ counter  +1 ] =="01" ) then //checking the referenced bit
+					
+					//ensuring that page shared b/w more than one process is not been shared 
+					if([ MEM_LIST + [  counter ] ] == 1 )then
+						break ;
+					endif ;
+
+					
+				endif ;
+ 
+
+				if([  counter  +1 ] == "11")then 
+					[  counter  +1 ] = "01" ;
+				endif ;
+				 
+				counter = counter + 2  ; 
+
+			endwhile ;
+ 
+			breakpoint ;
+			if(counter != PAGE_TABLE + 6  ) then 
+				break ;
+			endif ;
+
+
+			flag = flag +1 ;
+
+		endwhile ; 
+		free_pg_count = [ counter ] ;
+
+		//swapping the found page in swap area 
+		alias counterdisk S7  ;
+		counterdisk = 448 ;
+
+		while( counterdisk < 512) do 
+			if([DISK_LIST + counterdisk] == 0 ) then
+				break ;
+			endif ;
+			counterdisk = counterdisk +1 ;
+		endwhile ;
+
+		//no free space for swapping is found
+		if( counterdisk ==512 )then
+ 
+		//since the user has push the sysCall no  onto stack
+			 
+			[physicalSP-2] = -1  ;
+
+			 
+			ireturn ;
+
+		endif ;
+		 
+		store(  free_pg_count  , counterdisk );
+
+		[ counter + 1 ] = "00" ;
+		 
+		[ counter ] =  counterdisk ;
+
+		[ DISK_LIST + counterdisk ] = [ DISK_LIST + counterdisk ] + 1 ;
+
+		store(6, 20);
+		 
+ 
+		 
+	endif ;
+	 
+
+	// //indicating the free page number
+	// free_pg_count = counter ;
+
+	alias dummy S2  ;
+	alias parentpt S13 ;
+
+	dummy = PAGE_TABLE + child_pid * 8  ;
+	//updating the child page table with the free page in  memory 
+	[ dummy +6 ] = free_pg_count ;
+	[ dummy +7 ] = "01" ;
+	[ MEM_LIST + free_pg_count ] = 1 ;
+
+	counter = 0 ; 
+	
+	parentpt = PAGE_TABLE + parentpid*8 ;
+	 
+
+	//copying the page-table 
+	while(counter < 3)do 
+
+		[dummy+counter*2] = [ parentpt +counter*2] ;
+		[ dummy +counter*2 +1 ] = [parentpt  +counter*2 +1 ] ;
+
+		
+		if([ dummy +counter*2 +1 ]=="01" || [dummy +counter*2 +1 ]=="11")then
+			[MEM_LIST + [dummy +counter*2]] = [MEM_LIST + [dummy +counter*2]]+1 ;
+		 
+		endif ;
+		//
+		if(([dummy +counter*2 +1 ]== "00" ) && [dummy +counter*2  ] > 447)then
+			[DISK_LIST +[dummy + counter*2  ]] = [DISK_LIST +[dummy +counter*2  ]]+1 ;
+		endif ;
+		counter = counter +1 ;
+	endwhile ;
+ 
+	counter = 0 ;
+	alias counter2 S14 ;
+ 
+	//copying stack to the page allocated to child 
+	counter2 = 0 ;
+	alias pdata S15 ;
+	pdata = [ parentpt +3*2 ]*512 ;
+	
+ 
+	while(counter2 < 512)do 
+		[ free_pg_count*512  +counter2] = [pdata+counter2] ;
+		counter2 = counter2 +1 ;
+	endwhile ;
+	 
+ 
+	//copying the parent process file table
+ 	
+ 	//dummy = READY_LIST + child_pid*32 ;
+	counter2 = 15 ;
+	alias parentpcb S13 ;
+	dummy = READY_LIST + child_pid*32  ;//dummy => childpcb 
+
+	parentpcb = READY_LIST + parentpid*32 ;
+	while(counter2<31)do 
+
+		if([parentpcb + counter2] > -1) then
+			[dummy + counter2] = [ parentpcb +counter2] ;
+			[FILE_TABLE + 2 *  [dummy + counter2] +1 ] =  [FILE_TABLE + 2 * [ parentpcb + counter2] +1 ] +1 ;//counter increase in sys - filetable
+			[dummy + counter2 + 1] = [parentpcb +counter2+1] ; //lseek
+		else
+			[dummy + counter2] = -1 ;
+			[dummy + counter2 +1 ] = 0 ;
+		endif ;
+
+		counter2 =counter2+2 ;
+	endwhile ;
+
+ 
+	alias childpcb  S13 ;
+	// childpcb = READY_LIST + child_pid *32 ;
+	childpcb =READY_LIST + child_pid *32 ;
+
+	
+
+	[childpcb +1 ] = 1 ; //making the child process in ready state 
+	[childpcb + 2 ] = BP ;
+	[childpcb + 3 ] = SP-1 ; //because it is the child process and in parent process this is removed when it goes back with iret
+	[childpcb + 4 ] =[physicalSP] ; //setting the ip with that of parent
+	[childpcb + 5 ] =PAGE_TABLE + 8*child_pid ;
+	[childpcb + 6 ] = PTLR;
+	[childpcb + 7 ]	 = R0 ;
+	[childpcb + 8 ]  = R1 ;
+	[childpcb + 9 ]	 = R2 ;
+	[childpcb + 10 ] = R3 ;
+	[childpcb + 11 ] = R4 ;
+	[childpcb + 12 ] = R5 ;
+	[childpcb + 13 ] = R6 ;
+	[childpcb + 14 ] = R7  ;
+
+
+	[physicalSP-2] = child_pid ; //setting the return value of the current process as pid of child process
+	 
+	[[1024 + 8*child_pid + 6 ] * 512 + (SP-1) % 512 - 1 ] = -2;     // returning -2 to child process
+
+	   
+	ireturn ;
+	
+
+endif ;
+
+ 

@@ -1,0 +1,173 @@
+print("inside int6") ;
+
+alias physicalSP S0; //this the physical sp of parent process 
+alias sysCallNo S1;
+alias fileName S3 ;
+
+
+//getting the address of physical user SP
+physicalSP = ([PTBR + 2 * (SP / 512)] * 512) + (SP % 512);
+
+//since the user has push the sysCall no  onto stack
+sysCallNo = [physicalSP-1];
+fileName =  [physicalSP-3] ;
+
+//fork operation  with system call 6
+if(sysCallNo == 9)then 
+	alias loop_fat S4;
+	loop_fat = 0;
+
+	// if fat contains already the file name 
+	while(loop_fat < 64) do
+		if([FAT + loop_fat * 8] == fileName) then
+		    print("file available") ;
+			break ;
+			
+		endif;
+		loop_fat = loop_fat + 1;
+	endwhile;
+	if(loop_fat ==64) then 
+		print("no file") ;
+		[physicalSP-2] = -1 ;
+		ireturn ;
+	endif ;
+
+	alias basic_block S5 ;
+	basic_block = [FAT + loop_fat*8 + 2 ] ;
+
+	load(1,basic_block) ;
+
+	alias data_file_count S6 ;
+	data_file_count = 0 ;
+	while([SCRATCHPAD + data_file_count] != -1 )do 
+		data_file_count = data_file_count +1 ;
+	endwhile ;
+	 
+
+	//since program can be 3 page long 
+	if(data_file_count >3)then
+		print("prog too long") ;
+		[physicalSP-2] = -1 ;
+		ireturn ;
+	endif ;
+	data_file_count = data_file_count +1 ;//reserving for stack 
+
+	alias pid S7 ;
+	pid = (PTBR - 1024)/8 ;
+	alias present_pg S8 ;
+	present_pg = 0  ;
+	alias counter S9 ;
+	counter = 0  ;
+ 	alias p_table S13 ;
+ 	
+	//counting the number of valid pages in this process
+	while(counter < 4 ) do 
+		p_table = PAGE_TABLE + pid *8 + 2*counter ;
+		if([p_table] != -1 )then
+			present_pg = present_pg +1 ;
+		endif ;
+		counter = counter +1 ;
+	endwhile ;
+
+	 alias counter_ip S15;
+	 counter_ip = 0;
+	  
+	if( data_file_count < present_pg ) then 
+		counter = 2 ;	
+		//freeing the memory of extra pages
+		while( present_pg != data_file_count) do 
+			while([PAGE_TABLE + pid*8 + 2*counter] == -1) do
+				counter = counter - 1;
+			endwhile;
+			[MEM_LIST +[PAGE_TABLE + pid*8 +2*counter]] = 0 ;
+			[PAGE_TABLE + pid*8 +2*counter] = -1  ;
+			[PAGE_TABLE + pid*8 +2*counter+1 ] ='00' ;
+			present_pg = present_pg - 1;
+			counter =counter - 1 ;
+			 
+			 
+		endwhile ;
+
+	endif ;
+
+
+	alias loop_pg_table S10 ;
+	loop_pg_table = 0 ;
+	if(data_file_count > present_pg )then
+		counter = 0 ;
+		while(counter < 64) do 
+			if([MEM_LIST + counter] == 0 ) then
+				present_pg = present_pg +1 ;
+				//looping over the pagetable to find unallocated slots in page table
+				while([PAGE_TABLE + pid*8 + loop_pg_table*2] != -1) do 
+					loop_pg_table = loop_pg_table +1 ;
+				endwhile ;
+				[MEM_LIST + counter] =1 ;  //allocating this block of memory
+				[PAGE_TABLE + pid*8 + loop_pg_table*2] = counter ;
+				[PAGE_TABLE + pid*8 + loop_pg_table*2 +1] = "01" ;
+			endif ;
+
+
+			if(present_pg ==data_file_count)then
+				 
+				break ;
+			endif ;
+
+			counter = counter + 1 ;
+		endwhile ;
+	endif ;
+	
+	if(present_pg !=data_file_count)then
+		print("not enough pg") ;
+		print(present_pg) ;
+		print(data_file_count) ;
+		[physicalSP-2] =-1 ;
+		ireturn ;
+	endif ;
+ 
+
+	
+	counter = 0;	
+	//loading the filedata into current filepages
+	while(counter < data_file_count -1 ) do  
+		load([PAGE_TABLE + pid*8 + 2*counter],[SCRATCHPAD+ counter]) ;
+		[PAGE_TABLE + pid*8 + 2*counter + 1] = "01";
+		counter = counter +1  ;
+	endwhile ;
+	[PAGE_TABLE + pid*8 + 2*3 + 1] = "01"; //reference bit for stack
+	alias file_table_i S13 ;
+	counter = 15 ;
+	//closing all files
+	while(counter <31) do 
+
+		file_table_i = FILE_TABLE + 2*[READY_LIST +pid*32 +counter] ;
+
+		[file_table_i +1] = [file_table_i  +1]-1 ;
+
+		if([file_table_i   +1]==0)then
+			[ file_table_i] = -1 ;
+		endif ;
+		[READY_LIST +pid*32 +counter] = -1 ;
+		[READY_LIST +pid*32 +counter+1] = 0 ;
+
+		counter = counter +2 ;
+	endwhile	;
+
+
+	SP = 3*512 ;
+
+	[[PAGE_TABLE + pid * 8 +3*2]*512] = 0 ;
+
+	breakpoint ;
+	 
+	ireturn ;
+
+
+endif ;
+
+
+
+
+
+
+

@@ -1,0 +1,244 @@
+ print("inside int7") ;
+
+alias physicalSP S0; //this the physical sp of parent process 
+alias sysCallNo S1;
+
+alias pid S5 ;
+pid = (PTBR-1024) /8 ;
+
+
+
+//getting the address of physical user SP
+physicalSP = ([PTBR + 2 * (SP / 512)] * 512) + (SP % 512);
+
+//since the user has push the sysCall no  onto stack
+sysCallNo = [physicalSP-1] ;
+ 
+
+//exit operation  with system call 10
+if(sysCallNo == 10)then 
+	 
+	alias ready_pcb S3;
+	ready_pcb = 0;
+	//=======================================================================
+//for all the waiting process
+	alias countt S7 ;
+	countt = 0 ;
+	while(countt < 32)do 
+		if([READY_LIST + countt*32 +1 ]==100+pid)then 
+
+			[READY_LIST + countt*32 +1 ] = 1 ;
+		endif ;
+		countt = countt +1 ;
+	endwhile ;
+	print("freeing the proc") ;
+	 
+//=======================================================================
+
+
+
+	//checking  if any process is ready
+	while(ready_pcb < 32) do
+		if([READY_LIST + ready_pcb * 32 +1] == 1) then
+	        print("readyproc found") ;
+		    break ;
+		endif;
+		ready_pcb = ready_pcb + 1;
+	endwhile;
+	
+	//halting if no process is ready
+	if(ready_pcb == 32 )then
+		halt ;
+	endif ;
+
+	alias pid S4 ;
+	pid = (PTBR - 1024 )/8 ; //GETTING THE PID OF CURRENT PROCESS
+
+	alias cur_pcb S5 ;
+	cur_pcb = READY_LIST + pid *32 ;
+	
+	alias fid S6 ;
+	fid = 0 ;
+	alias file_index S7 ;
+
+	//closing all fid s
+	while(fid < 8) do 
+		file_index = [cur_pcb +15  +2*fid] ;
+		[FILE_TABLE+ 2*file_index +1 ] = [FILE_TABLE+ 2*file_index +1 ] -1 ;
+		if([FILE_TABLE+ 2*file_index +1 ] ==0) then   //freeing the filetable if no file is opened 
+			[FILE_TABLE+ 2*file_index ]  = -1 ;
+		endif ;
+		fid = fid +1 ;
+	endwhile ;
+
+	[cur_pcb +1] = 0 ; //freeing the pcb
+	alias counter S6 ;
+	counter = 0 ;
+	alias block_to_free S8 ;
+	while(counter < 4)do 
+		block_to_free =[PTBR + 2*counter] ;
+		[MEM_LIST + block_to_free] = 0 ;  //freeing the memory 
+		[PTBR + 2* counter +1 ] = "00" ;  //invalidating pages in page table
+		counter = counter +1 ;
+	endwhile ;
+ 
+	counter = 0 ;
+	alias fid_locat S8 ;
+	fid_locat = READY_LIST + 15 + pid*32 ;
+	//reseting the per-process-page-table
+	while(counter < 8 ) do 
+		[fid_locat + counter] = -1 ;
+		counter = counter + 1 ;
+	endwhile ;
+
+
+endif ;
+
+
+ 
+ 
+//waiting process
+if(sysCallNo ==13	)then 
+
+	alias waiting_pid S2 ;
+	waiting_pid = [physicalSP - 3] ;
+
+	alias pcb S3 ;
+	pcb= READY_LIST +waiting_pid*32 ;
+
+	if([pcb +1]==2 || [pcb +1 ]== 0)then //terminated or waiting for itself
+		[physicalSP-2] = -1 ;
+		ireturn ;
+	endif ;
+
+	alias pid S5 ;
+	pid = (PTBR-1024) /8 ;
+
+	[READY_LIST + pid*32 +1] = 100 + waiting_pid ; //blocking the current pid for indicating that it is waiting
+
+	[physicalSP-2] = 0 ; 
+
+
+	//calculating pid
+	alias currentPID S0;
+	currentPID = (PTBR - 1024) / 8;
+
+	//calculating current pcb
+	alias currentPCB S1;
+	currentPCB = READY_LIST + 32 * currentPID; 
+
+	// sp -1 is due to pushing ip atomatically when hardware interrupts comes the top of the stack
+	[ currentPCB + 2 ] = BP;
+	[ currentPCB + 3 ] = SP - 1; 
+
+	alias physicalSP S2;
+	physicalSP = ([PTBR + 2 * (SP / 512)] * 512) + (SP % 512); 
+
+
+	[ currentPCB + 4 ] = [ physicalSP ]; // Save IP of current process in the PCB from the stack
+
+	[ currentPCB + 5 ] = PTBR;
+	[ currentPCB + 6 ] = PTLR ; 
+
+	[ currentPCB + 7 ] = R0;
+	[ currentPCB + 8 ] = R1;
+	[ currentPCB + 9 ] = R2;
+	[ currentPCB + 10 ] = R3;
+	[ currentPCB + 11 ] = R4;
+	[ currentPCB + 12 ] = R5;
+	[ currentPCB + 13 ] = R6;
+	[ currentPCB + 14 ] = R7;
+
+
+	//sheduling the ready process 
+	print("waiting") ;
+	  
+endif ;
+
+
+alias newPID S7 ; 
+newPID = pid +1;
+while(newPID != pid ) do 
+
+    if(newPID > 31 ) then
+            newPID = 0 ;
+            continue ;
+        endif ; 
+   
+    if([newPID*32 +1 +READY_LIST]==1) then
+    
+        break ;
+    endif ;
+ 
+     newPID = newPID +1 ; 
+
+  
+endwhile ;  
+	 
+ 
+
+
+if([newPID*32 +1 +READY_LIST]==1) then
+//loading data for the process 1 
+    alias newPCB S10;
+    newPCB = newPID*32+READY_LIST ;
+    
+    SP  =[ newPCB + 3 ] ;
+    BP  =[ newPCB + 2 ];
+    PTBR =[ newPCB + 5 ];
+    PTLR =[ newPCB + 6 ] ; 
+    R0 =[ newPCB + 7 ];
+    R1 =[ newPCB + 8 ];
+    R2 =[ newPCB + 9 ];
+    R3 =[ newPCB + 10];
+    R4 =[ newPCB + 11];
+    R5 =[ newPCB + 12];
+    R6 =[ newPCB + 13];
+    R7 =[ newPCB + 14];
+
+
+    SP = SP+1; 
+    alias newphysicalSP S11;
+    newphysicalSP = ([PTBR + 2 * (SP / 512)] * 512) + (SP % 512);
+    [ newphysicalSP ] = [ 32*newPID + 4 +READY_LIST]; // Stores IP field value of PCB on the stack 
+        
+    [newPID*32 +1 +READY_LIST]=2 ;
+    
+      
+
+	ireturn ;
+endif ;
+
+
+
+ 
+
+// signalling
+if(sysCallNo ==14	)then 
+	print("signalingint") ;
+ 
+	alias curpid S4 ;
+	curpid = (PTBR -1024)/8 ;
+
+	curpid =curpid +100 ;
+
+	alias counter S6 ;
+	counter = 0 ; 
+	while(counter <32) do 
+		if([READY_LIST+ counter*32 +1]==curpid)then 
+			[READY_LIST+ counter*32 +1] = 1 ;
+		endif ;
+		counter = counter +1 ;
+	endwhile ;
+
+	[physicalSP-2] = 0 ;
+ 
+	ireturn ;
+
+endif ;
+
+
+ 
+print("No process") ;
+halt ;
+	 

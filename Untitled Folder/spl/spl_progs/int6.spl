@@ -1,0 +1,181 @@
+print("inside int6") ;
+ 
+alias physicalSP S0; //this the physical sp of parent process 
+alias sysCallNo S1;
+alias fileName S3 ;
+
+
+//getting the address of physical user SP
+physicalSP = ([PTBR + 2 * (SP / 512)] * 512) + (SP % 512);
+
+//since the user has push the sysCall no  onto stack
+sysCallNo = [physicalSP-1];
+fileName =  [physicalSP-3] ;
+
+//exec operation  with system call 9
+if(sysCallNo == 9)then 
+	alias loop_fat S4;
+	loop_fat = 0;
+
+	// if fat contains already the file name 
+	while(loop_fat < 64) do
+		if([FAT + loop_fat * 8] == fileName) then
+		    
+			break ;
+			
+		endif;
+		loop_fat = loop_fat + 1;
+	endwhile;
+	if(loop_fat ==64) then 
+		print("no file") ;
+		[physicalSP-2] = -1 ;
+		ireturn ;
+	endif ;
+	 
+
+	alias basic_block S5 ;
+	basic_block = [FAT + loop_fat*8 + 2 ] ;
+
+	load(1,basic_block) ;
+
+	alias data_file_count S6 ;
+	data_file_count = 0 ;
+	while([SCRATCHPAD + data_file_count] >= 20 )do 
+		data_file_count = data_file_count +1 ;
+	endwhile ;
+	 
+
+
+	//since program can be 3 page long 
+	if(data_file_count >3)then
+		print("prog too long") ;
+		[physicalSP-2] = -1 ;
+		ireturn ;
+	endif ;
+	data_file_count = data_file_count +1 ;//reserving for stack 
+
+	alias pid S7 ;
+	pid = (PTBR - 1024)/8 ;
+	alias present_pg S8 ;
+	present_pg = 0  ;
+	alias counter S9 ;
+	counter = 0  ;
+ 	alias p_table S13 ;
+  
+
+	 alias counter_ip S15;
+	 counter_ip = 0; 
+
+ 
+ 
+	counter = 0 ;
+	//freeing the pcb 
+	while(counter < 3) do 
+
+		if([PTBR +2*counter ] !=-1 ) then
+			if([PTBR +2*counter +1 ] == "00") then
+				if([PTBR +2*counter  ] >447 )then
+					[DISK_LIST + [PTBR +2*counter  ] ] = [DISK_LIST + [PTBR +2*counter  ] ] -1 ;
+				endif ;
+			endif ;
+			if([PTBR +2*counter +1 ] == "01" || [PTBR +2*counter +1 ] == "11" ) then
+				[MEM_LIST + [PTBR +2*counter ]] = [MEM_LIST + [PTBR +2*counter ]]-1 ;
+			endif	 ;
+		endif ;
+
+		counter = counter +1 ;
+	endwhile ;
+	store(6,20) ;
+
+	 
+	//loading the  pagetable entry with the disk  block no.
+	data_file_count = 0 ;
+	while([SCRATCHPAD + data_file_count] >= 20 )do 
+
+		[PTBR +2*data_file_count ] = [SCRATCHPAD + data_file_count] ;
+		[PTBR +2*data_file_count +1 ]  ="00" ;
+		data_file_count = data_file_count +1 ;
+	endwhile ;
+
+	//invalidating the other page entyr in  page-table
+	while(data_file_count < 3 ) do 
+
+		[PTBR +2*data_file_count ]=-1 ;
+
+		[PTBR +2*data_file_count +1]="00" ;
+		data_file_count =data_file_count +1 ;
+	endwhile ;
+
+	 
+
+	[PAGE_TABLE + pid*8 + 7] = "01"; //reference bit for stack
+	alias file_table_i S13 ;
+	counter = 15 ; 
+	//closing all files
+	while(counter < 31) do 
+		if([READY_LIST +pid*32 +counter]==-1) then
+			counter = counter + 2 ;
+			continue ;
+		endif ;
+
+		file_table_i = FILE_TABLE + 2*[READY_LIST +pid*32 +counter] ;
+
+		[file_table_i +1] = [file_table_i  +1]-1 ;
+
+		if([file_table_i   +1]  == 0 )then
+			[ file_table_i] = -1 ;
+		endif ;
+
+		[READY_LIST +pid*32 +counter ] = -1 ;
+		[READY_LIST +pid*32 +counter+1 ] = 0 ;
+
+		counter = counter +2 ;
+	endwhile	;
+ 
+ 
+	BP = 3*512 ;
+	SP = 3*512 ; 
+
+	//updating the ip field in pcb
+	 
+	[READY_LIST + 32 * pid + 4] = 0 ;
+	[[PAGE_TABLE + pid * 8 +3*2]*512] = 0 ;
+	
+ 
+	ireturn ;
+
+
+endif ;
+
+
+//getting the pid system call 
+if(sysCallNo == 11)then 
+
+	alias pid S7 ;
+	pid = (PTBR - 1024)/8 ;
+	[physicalSP-2] = pid ; 
+	ireturn ;
+endif ;
+
+
+//getting the parent  pid system call 
+if(sysCallNo == 12)then 
+ 
+	alias pid S7 ;
+	pid = (PTBR - 1024)/8 ;
+
+	[physicalSP-2] = [READY_LIST + 31 + 32 * pid] ; //parent pid
+	ireturn ;
+endif ;
+ 
+halt ; 
+
+
+
+
+
+
+
+
+
+

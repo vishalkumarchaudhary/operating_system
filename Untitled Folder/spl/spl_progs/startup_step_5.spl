@@ -1,0 +1,51 @@
+//loading init program
+load(25,21) ;
+load(26,22) ;
+load(27,23) ;
+
+
+//loading int7 and exhandler 
+load(23 ,17) ;
+load(24 ,18) ;
+load(7 ,1) ;
+load(8 ,2) ;
+
+
+//loading int1
+load (11, 5);
+load (12, 6);
+
+//loading timer interrupt
+load (9, 3);
+load (10, 4); 
+
+ 
+[READY_LIST+0] = 0 ;//PID IS SET TO BE ZER0 
+
+PTBR = PAGE_TABLE ; //AS PID IS ZERO 
+PTLR = 4 ;
+ 
+[PTBR+0] =  25 ;
+[PTBR+1] = "01" ;
+
+[PTBR+2] =  26 ;
+[PTBR+3] = "01" ;
+ 
+[PTBR+4] =  27 ;
+[PTBR+5] = "01" ;
+
+[PTBR+6] =  28 ;
+[PTBR+7] = "01" ;
+
+[READY_LIST+1] = 2  ; //SETTING THE STATE TO BE IN RUNNING STATE 
+
+//setting the stack pointer 
+SP  = 3*512 ;
+
+// where to set the base pointer 
+
+//setting the top of the stack to be 0 as ip will get this and the stack of init prog is at block 28
+[28*512] = 0 ;
+ireturn ;
+
+ 

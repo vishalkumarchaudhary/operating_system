@@ -1,0 +1,116 @@
+print("inside int3") ;
+
+alias physicalSP S0;
+alias sysCallNo S1;
+
+
+//getting the address of physical user SP
+physicalSP = ([PTBR + 2 * (SP / 512)] * 512) + (SP % 512);
+
+//since the user has push the sysCall no  onto stack
+sysCallNo = [physicalSP-1];
+
+//seek operation  with system call 6
+if(sysCallNo == 6 )then 
+	alias fid S2;
+	fid = [physicalSP-4];
+	alias seek S3;
+	seek = [physicalSP-3];
+	print("************************") ;
+	print(seek) ;
+	print(fid) ;
+	print("************************") ;
+
+	//calculating pid 
+	alias pid S4 ;
+	pid = (PTBR - 1024 )/8 ;
+	
+	//checking whether fid is valid
+	if([READY_LIST +pid *32 +15+2*fid] == -1 || fid > 7 || fid < 0) then
+		print("invaid fid") ;
+		[physicalSP-2] = -1;
+		ireturn ;
+	endif ;
+
+	alias file_table_ptr S7 ;
+	 
+	file_table_ptr = [READY_LIST +pid *32 + 2*fid+15] ;
+	
+
+
+	alias file_size S5 ;
+	file_size = [FILE_TABLE +file_table_ptr ] ; //getting fat index
+	
+	file_size = [FAT + 8*file_size + 1] ; //getting the file size
+ 
+	if( seek > -1 && seek < file_size)then 
+		[READY_LIST +pid *32 + 2*fid+15 + 1] = seek ;
+		
+		[physicalSP-2] = 0;
+		print("seeking_successfull") ;
+		ireturn ;
+	endif ;
+
+	[physicalSP-2] = -1;
+	print("seeking_unsuccessfull") ;
+	ireturn ;	
+endif ;
+
+//FOR READ 
+
+if(sysCallNo == 7 )then 
+
+	alias fid S2;
+	fid = [physicalSP-4];
+	alias w_read S3 ;
+	print("************************") ;
+	print(fid) ;
+	print(w_read) ;
+	print("************************") ;
+
+	//calculating pid 
+	alias pid S4 ;
+	pid = (PTBR - 1024 )/8 ;
+	
+	//checking whether fid is valid
+	if([READY_LIST +pid *32 + +15+2*fid] == -1 || fid > 7 || fid < 0) then
+		print("invaid fid") ;
+		[physicalSP-2] = -1;
+		ireturn ;
+	endif ;
+	alias file_table_ptr S5 ;
+	 
+	file_table_ptr = [READY_LIST +pid *32 + 15 +2*fid] ;
+	alias lseek S6 ;
+	lseek = [READY_LIST +pid *32 + 2*fid +15 +1 ]  ;
+
+ 
+
+	//getting the fat index 
+	alias fat_index  S7 ;
+	fat_index = [FILE_TABLE + file_table_ptr] ;
+
+	//getting basic block ;
+	alias basic_block S8 ;
+	basic_block = [FAT + fat_index * 8 +2] ;
+
+	load(1,basic_block) ;
+
+	alias block_no S9 ;
+	block_no = lseek/512 ;
+	if([SCRATCHPAD + block_no] ==-1)then
+	       print("invalid read");
+	       [physicalSP-2] = -1 ;
+	       ireturn ;
+        endif ;
+
+	load(1,[SCRATCHPAD + block_no]);//loading the basic block to scractchpad
+	 
+	[physicalSP-3] = [SCRATCHPAD + lseek % 512] ; //storing into argument
+	[physicalSP-2] = 0 ;
+
+	[READY_LIST +pid *32 + 2*fid +15+1 ] = lseek + 1  ; //incrementing the lseek position
+	print("read_successfull") ;
+	 
+	ireturn ;
+endif ;

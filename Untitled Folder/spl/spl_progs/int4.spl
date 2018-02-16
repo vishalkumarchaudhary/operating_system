@@ -1,0 +1,103 @@
+print("inside int4") ;
+
+alias physicalSP S0;
+alias sysCallNo S1;
+
+
+//getting the address of physical user SP
+physicalSP = ([PTBR + 2 * (SP / 512)] * 512) + (SP % 512);
+
+//since the user has push the sysCall no  onto stack
+sysCallNo = [physicalSP-1];
+
+alias f2write S2;
+f2write = [physicalSP-3];
+alias fid S3;
+fid = [physicalSP-4]; 
+
+// to write into file
+if(sysCallNo ==5 )then 
+
+	//calculating pid 
+	alias pid S4 ;
+	pid = (PTBR - 1024 )/8 ;
+	 
+	print(pid);
+	
+	//checking whether fid is valid
+	if([READY_LIST +pid *32 + 2*fid +15] == -1 || fid > 7 || fid < 0) then
+		print("invaid fid") ;
+		[physicalSP-2] = -1;
+		ireturn ;
+	endif ;
+	
+	alias file_table_ptr S7 ;
+	alias lseek S13 ;
+	file_table_ptr = [READY_LIST +pid *32 + 2*fid+15] ;
+	lseek = [READY_LIST +pid *32 + 2*fid +1 +15 ] ;
+
+
+	alias fat_index S5 ;
+	fat_index = [FILE_TABLE +file_table_ptr] ;
+	
+	alias basic_block S7 ;
+	basic_block = [FAT  + fat_index*8 +2] ; //getting the basic block ;
+
+	load(1 ,basic_block) ;
+
+	alias blockNo S8 ;
+	blockNo = lseek / 512 ;
+	alias data_block S9 ;
+
+	alias counter S10 ;		
+
+	data_block = [SCRATCHPAD + blockNo] ;
+	
+	
+	
+	
+	print("doubt2");
+	 
+	if(data_block == -1)then 
+		counter =24 ;
+		while( counter <448) do 
+			if([DISK_LIST + counter]==0) then ///free block
+				[DISK_LIST + counter]= 1 ;
+				[SCRATCHPAD + blockNo] = counter ; //adding this free block to basic block 
+				store(1 ,basic_block) ;
+				[FAT  + fat_index*8 +1] = [FAT  + fat_index*8 +1] + 512 ;
+				store(5,19) ;
+				data_block = counter ;
+				break ;
+			endif ;
+			counter = counter + 1 ;
+		endwhile ;
+
+		if(counter == 448)then
+			print("no free block") ;
+			[physicalSP-2] = -1;
+			ireturn ;
+		endif ;
+	endif ;
+	print("doubt");
+	 
+
+	load(1 ,data_block) ;
+	[SCRATCHPAD + lseek % 512] =f2write ;
+	store(1,data_block) ;
+
+	[READY_LIST +pid *32 + 2*fid +1 +15] =lseek +1 ;
+	 
+	//no need to store the ready list back to disk since it has life time equals to process life time
+
+	print("written_sucessfull") ;
+	[physicalSP-2] = 0;
+
+	ireturn ;
+endif		;
+
+//why we are not using memory pages for the basic block 
+
+
+
+	

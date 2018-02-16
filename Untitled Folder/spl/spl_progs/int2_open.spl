@@ -1,0 +1,153 @@
+print("inside int2") ;
+
+alias physicalSP S0;
+alias sysCallNo S1;
+
+
+//getting the address of physical user SP
+physicalSP = ([PTBR + 2 * (SP / 512)] * 512) + (SP % 512);
+
+//since the user has push the syscall no  onto stack
+sysCallNo = [physicalSP-1];
+
+
+alias filename S2;
+filename = [physicalSP-3];
+
+//open syscallno is 2
+if(sysCallNo == 2) then 
+	alias loop_fat S3;
+	loop_fat = 0;
+
+	// if fat contains already the file name 
+	while(loop_fat < 64) do
+		if([FAT + loop_fat * 8] == filename) then
+		        
+		        print("fat contain this file ") ;
+		    	break ;
+			
+		endif;
+		loop_fat = loop_fat + 1;
+	endwhile;
+	if(loop_fat==64)then
+		[physicalSP-2] = -1;  //setting the return as failure
+		ireturn;
+	endif;
+
+	alias file_table_l S4 ;
+	alias free_entry S5 ;
+
+	file_table_l  = 0 ;
+	free_entry = -1 ;
+//checking if filename is present in file table
+	while(file_table_l < 64)do 
+		if( [FILE_TABLE +file_table_l]==loop_fat)then //entry in filetable with fat index
+			//[FILE_TABLE +file_table_l + 1] = [FILE_TABLE +file_table_l + 1]+1 ;
+			
+			//[physicalSP-2] = 0;
+			//print("found in file_table") ;
+			//ireturn ;
+			break;
+		endif ;
+		if([FILE_TABLE +file_table_l]==-1)then 
+			free_entry = file_table_l ;
+		break ;
+		endif ;
+		file_table_l = file_table_l + 2 ;
+	endwhile ;
+//if file table has no entry left 
+	if(free_entry == -1 && file_table_l==64)then 
+		[physicalSP-2] = -1;
+		print("full filetable") ;
+		ireturn ;
+	endif ;
+	
+	alias pid S6 ;
+	pid = (PTBR - 1024 )/8 ; //GETTING THE PID OF CURRENT PROCESS 
+
+	print("pid ->"); 
+	print(pid);
+	print("+++++++");
+
+	alias counter S7 ;
+	counter = 15 ;
+	while(counter <=30 )do 
+		if( [READY_LIST +32*pid +counter ] == -1)then
+			break ;
+		endif ;
+		counter =counter +2 ;
+	endwhile ;
+	
+	if(counter == 31 )then
+		[physicalSP-2] = 0;
+		print("no per-proc entry") ;
+		ireturn ;
+	endif ;
+
+	//setting the per-process open file table 
+	[READY_LIST + pid*32 +counter ] = file_table_l ; //points to system wide open file-table
+	[READY_LIST + pid*32 +counter +1  ] = 0   ;//setting lseek to zero initially
+	
+	//setting the open file table entry with pointing to the fat entry 
+        [FILE_TABLE +file_table_l] = loop_fat ;
+	[FILE_TABLE +file_table_l +1 ]  = [FILE_TABLE +file_table_l +1 ] +1 ;
+	
+		
+    [physicalSP-2] =  (counter - 15)/2 ; //file id 
+ 
+	ireturn ;
+endif ;
+ 
+//for checking the close  file system call 
+if(sysCallNo == 3 ) then 
+	alias fid S2;
+	fid = [physicalSP-3];
+
+	print("close_interrupt");
+	 
+        if((fid  > 7) && (fid < 0 ))then 
+                [physicalSP-2] = -1;  
+	        print("invalid fid") ;
+	        ireturn ;
+        endif ;
+        
+	alias pid S3 ;
+	pid = (PTBR - 1024 )/8 ; //GETTING THE PID OF CURRENT PROCESS 
+	print("current pid is");
+	print(pid);
+	if([READY_LIST + pid*32 +2*fid +15] == -1 ) then 
+	        [physicalSP-2] = -1;  
+	        print("invalid fid entry ") ;
+	        ireturn ;
+        endif ;
+        
+        alias ptr_file_table S4 ;
+        ptr_file_table = [READY_LIST + pid*32 +2*fid ]  ;
+        
+        //decrementing the no.of open file in system wide file table
+        [FILE_TABLE + ptr_file_table + 1 ] = [FILE_TABLE + ptr_file_table + 1 ] -1 ;
+        
+        if([FILE_TABLE + ptr_file_table +1] == 0) then 
+                [FILE_TABLE + ptr_file_table ] = -1 ;
+        endif ;
+        
+        //invalidating the file entry in per-process-file-table
+         
+        [READY_LIST + pid*32 +2*fid +15 ] = -1 ;
+        [READY_LIST + pid*32 +2*fid +15 +1 ] = -1 ;
+        
+        [physicalSP-2] = 0;  
+        print("file_closed ") ;
+        ireturn ;
+
+endif ;
+                
+                
+	
+		
+
+
+
+	
+
+

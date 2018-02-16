@@ -1,0 +1,142 @@
+//loading init program
+load(25,21) ;
+load(26,22) ;
+load(27,23) ;
+
+
+//loading int7 and exhandler 
+load(23 ,17) ;
+load(24 ,18) ;
+load(7 ,1) ;
+load(8 ,2) ;
+
+
+//loading init1
+load (11, 5);
+load (12, 6);
+
+//loading timer interrupt
+load (9, 3);
+load (10, 4); 
+
+//loading the fat entry
+load(5 ,19) ;
+
+//loading diskfree list 
+load(6,20);
+
+ 
+[READY_LIST+0] = 0 ;//PID IS SET TO BE ZER0 
+
+PTBR = PAGE_TABLE ; //AS PID IS ZERO 
+PTLR = 4 ;
+ 
+[PTBR+0] =  25 ;
+[PTBR+1] = "01" ;
+
+[PTBR+2] =  26 ;
+[PTBR+3] = "01" ;
+ 
+[PTBR+4] =  27 ;
+[PTBR+5] = "01" ;
+
+[PTBR+6] =  28 ;
+[PTBR+7] = "01" ;
+
+[READY_LIST+1] = 2  ; //SETTING THE STATE TO BE IN RUNNING STATE
+[READY_LIST +31] = 0 ;
+
+//setting the stack pointer 
+SP  = 3*512 ;
+
+// where to set the base pointer 
+
+//setting the top of the stack to be 0 as ip will get this and the stack of init prog is at block 28
+SP = SP +1 ;
+[28*512] = 0 ;
+
+[28*512+1 ] = 0 ;
+//===================================================
+//initialising the system_wide_open_file_table
+
+alias counter S0;			
+counter = 0;
+while ( counter <  128) do			// 64 entries, each of size 2 words
+	[ FILE_TABLE + counter + 0] = -1;	// Set FAT Index to -1
+	[ FILE_TABLE + counter + 1] =  0;	// Set File Open Count to 0
+	counter = counter + 2;			// Move to next entry
+endwhile;	
+//====================================================
+// invalidating all entries of per-process-open-file-table of init process
+counter =15 ;
+while(counter <=30)do 
+	[READY_LIST + counter ] = -1 ; //invalid
+	[READY_LIST + counter +1] = 0 ;// lseek is reset
+	counter = counter + 2  ;
+endwhile;
+
+//loading interrupt 1,2,3,4 ,5,6,7
+load(11 ,5);
+load(12 ,6);
+load(13 ,7);
+load(14 ,8);
+
+load(15 ,9);
+load(16 ,10);
+load(17 ,11);
+load(18 ,12);
+
+load(19 ,13);
+load(20 ,14);
+load(21 ,15);
+load(22 ,16);
+
+load(23 ,17);
+load(24 ,18);
+
+//initialising memory free list 
+alias mem_l S1 ;
+mem_l = 0 ;
+while(mem_l <29)do
+	[mem_l + MEM_LIST]=1  ;
+	mem_l = mem_l +1 ;
+endwhile ;
+
+
+while(mem_l < 64 ) do
+	[mem_l + MEM_LIST ] = 0 ;
+	mem_l = mem_l +1 ;
+endwhile ;
+
+alias pcb_free S1 ;
+pcb_free = 1 ;
+
+while( pcb_free < 32) do 
+	[READY_LIST + 32*pcb_free +1] = 0 ; //free pid s
+	pcb_free = pcb_free + 1 ;
+endwhile ;
+
+
+print("start user");
+
+ireturn ;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 

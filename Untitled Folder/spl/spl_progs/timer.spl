@@ -1,0 +1,100 @@
+ 
+
+//calculating pid
+alias currentPID S0;
+currentPID = (PTBR - 1024) / 8;
+
+//calculating current pcb
+alias currentPCB S1;
+currentPCB = READY_LIST + 32 * currentPID;
+
+[ currentPCB + 1 ] = 1 ; // Set STATE to READY
+
+// sp -1 is due to pushing ip atomatically when hardware interrupts comes the top of the stack
+[ currentPCB + 2 ] = BP;
+[ currentPCB + 3 ] = SP - 1; 
+
+alias physicalSP S2;
+physicalSP = ([PTBR + 2 * (SP / 512)] * 512) + (SP % 512); 
+
+
+[ currentPCB + 4 ] = [ physicalSP ]; // Save IP of current process in the PCB from the stack
+
+[ currentPCB + 5 ] = PTBR;
+[ currentPCB + 6 ] = PTLR ; 
+
+[ currentPCB + 7 ] = R0;
+[ currentPCB + 8 ] = R1;
+[ currentPCB + 9 ] = R2;
+[ currentPCB + 10 ] = R3;
+[ currentPCB + 11 ] = R4;
+[ currentPCB + 12 ] = R5;
+[ currentPCB + 13 ] = R6;
+[ currentPCB + 14 ] = R7;
+
+//round-robbing
+alias newPID S7 ; 
+newPID = currentPID +1;
+
+while(newPID != currentPID ) do 
+
+    if(newPID > 31 ) then
+            newPID = 0 ;
+            continue ;
+        endif ; 
+   
+    if([newPID*32 +1 +READY_LIST]==1) then
+    
+        break ;
+    endif ;
+ 
+     newPID = newPID +1 ; 
+
+  
+endwhile ;
+
+ 
+  
+
+ 
+
+if([newPID*32 +1 +READY_LIST]==1) then
+
+//laoding data for the process 1 
+    alias newPCB S3;
+    newPCB = newPID*32+READY_LIST ;
+    
+    BP  =[ newPCB + 2 ];
+    SP  =[ newPCB + 3 ] ;
+    PTBR =[ newPCB + 5 ];
+    PTLR =[ newPCB + 6 ] ; 
+    R0 =[ newPCB + 7 ];
+    R1 =[ newPCB + 8 ];
+    R2 =[ newPCB + 9 ];
+    R3 =[ newPCB + 10];
+    R4 =[ newPCB + 11];
+    R5 =[ newPCB + 12];
+    R6 =[ newPCB + 13];
+    R7 =[ newPCB + 14];
+
+
+    SP = SP + 1;
+    alias newphysicalSP S2;
+    newphysicalSP = ([PTBR + 2 * (SP / 512)] * 512) + (SP % 512);
+    [ newphysicalSP ] = [ 32*newPID + 4 +READY_LIST]; // Stores IP field value of PCB on the stack 
+        
+    [newPID*32 +1 +READY_LIST]=2 ; //it was previously 2
+     
+    ireturn ;
+endif ;
+
+
+ 
+ 
+
+
+halt ;
+
+
+
+
